@@ -73,7 +73,7 @@ const ToastManager = forwardRef<ToastManagerHandles, object>((_, ref) => {
     };
 
     return (
-        <div className="fixed bottom-4 right-4 z-[9999] pointer-events-none">
+        <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-[9999] pointer-events-none">
             <div className="flex flex-col gap-3">
                 <AnimatePresence>
                     {toasts.map((toast) => {
@@ -94,7 +94,7 @@ const ToastManager = forwardRef<ToastManagerHandles, object>((_, ref) => {
                                 className="pointer-events-auto"
                             >
                                 <div
-                                    className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border ${styles.bgColor} ${styles.borderColor} min-w-[300px] max-w-[400px] cursor-pointer group hover:shadow-xl transition-shadow duration-200`}
+                                    className={`flex items-center gap-3 px-3 py-2 sm:px-4 sm:py-3 rounded-lg shadow-lg border ${styles.bgColor} ${styles.borderColor} min-w-0 max-w-full sm:min-w-[300px] sm:max-w-[400px] cursor-pointer group hover:shadow-xl transition-shadow duration-200`}
                                     onClick={() => removeToast(toast.id)}
                                 >
                                     <div className={`w-5 h-5 rounded-full ${styles.iconBg} flex items-center justify-center flex-shrink-0`}>
@@ -102,7 +102,7 @@ const ToastManager = forwardRef<ToastManagerHandles, object>((_, ref) => {
                                             {styles.icon}
                                         </span>
                                     </div>
-                                    <span className={`text-sm font-medium ${styles.textColor} flex-1`}>
+                                    <span className={`text-xs sm:text-sm font-medium ${styles.textColor} flex-1`}>
                                         {toast.message}
                                     </span>
                                     <div className="w-1 h-1 rounded-full bg-gray-400 opacity-50 group-hover:opacity-75 transition-opacity"></div>
