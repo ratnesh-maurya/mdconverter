@@ -1,103 +1,482 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { motion } from "framer-motion";
+import { Copy, Sparkles, Zap, Clipboard, ArrowRight, Github } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import ToastManager, { ToastManagerHandles } from "./components/ui/toast-manager";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [markdown, setMarkdown] = useState("");
+  const [isMac, setIsMac] = useState(false);
+  const [lastPasteTime, setLastPasteTime] = useState(0);
+  const toastRef = useRef<ToastManagerHandles>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+  }, []);
+
+  const convertToMarkdown = (text: string) => {
+    const converted = text.trim();
+    const lines = converted.split('\n');
+    const processedLines: string[] = [];
+    let inCodeBlock = false;
+    let codeBlockLines: string[] = [];
+    let codeBlockType = '';
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmedLine = line.trim();
+
+      // Skip empty lines (but preserve them)
+      if (!trimmedLine) {
+        if (inCodeBlock) {
+          codeBlockLines.push('');
+        } else {
+          processedLines.push('');
+        }
+        continue;
+      }
+
+      // Detect code blocks - look for JSON, scripts, or code patterns
+      const isCodeLike = (
+        /^[{\[]/.test(trimmedLine) || // JSON objects/arrays
+        /^"[^"]*":\s*/.test(trimmedLine) || // JSON properties
+        /^\s*["}]/.test(line) || // Closing braces
+        /^(npx|npm|yarn|git|cd|next|create-)/.test(trimmedLine) || // Commands
+        /\.(js|ts|tsx|jsx|json|css|html)$/.test(trimmedLine) || // File extensions
+        /^[a-zA-Z]+:/.test(trimmedLine) && trimmedLine.includes('"') // Key-value pairs
+      );
+
+      // Handle code block detection
+      if (isCodeLike && !inCodeBlock) {
+        // Detect type of code block
+        if (trimmedLine.includes('.json') || /^[{\[]/.test(trimmedLine) || /^"[^"]*":\s*/.test(trimmedLine)) {
+          codeBlockType = 'json';
+        } else if (/^(npx|npm|yarn|git|cd)/.test(trimmedLine)) {
+          codeBlockType = 'bash';
+        } else if (trimmedLine.includes('.js') || trimmedLine.includes('.ts')) {
+          codeBlockType = 'javascript';
+        } else {
+          codeBlockType = 'text';
+        }
+        inCodeBlock = true;
+        codeBlockLines = [line];
+        continue;
+      }
+
+      // Continue code block or end it
+      if (inCodeBlock) {
+        codeBlockLines.push(line);
+
+        // Check if code block should end
+        const shouldEndCodeBlock = (
+          // Next line looks like regular text or heading
+          (i + 1 < lines.length &&
+            lines[i + 1].trim() &&
+            !isCodeLike &&
+            !/^\s/.test(lines[i + 1]) && // Not indented
+            /^[A-Z]/.test(lines[i + 1].trim())) || // Starts with capital
+          // Current line ends a JSON/object structure
+          (/^[}\]]/.test(trimmedLine) && codeBlockType === 'json') ||
+          // No more lines
+          i === lines.length - 1
+        );
+
+        if (shouldEndCodeBlock) {
+          processedLines.push(`\`\`\`${codeBlockType}`);
+          processedLines.push(...codeBlockLines);
+          processedLines.push('```');
+          inCodeBlock = false;
+          codeBlockLines = [];
+          codeBlockType = '';
+        }
+        continue;
+      }
+
+      // Regular text processing (when not in code block)
+
+      // Check for headings - improved logic
+      const isHeading = (
+        trimmedLine.length < 80 &&
+        /^[A-Z#]/.test(trimmedLine) &&
+        !/[.!?;:]$/.test(trimmedLine) &&
+        !trimmedLine.includes('?') &&
+        !trimmedLine.includes('"') &&
+        !trimmedLine.toLowerCase().startsWith('these') &&
+        !trimmedLine.toLowerCase().startsWith('then') &&
+        !trimmedLine.toLowerCase().startsWith('the ') &&
+        (trimmedLine.split(' ').length <= 10) &&
+        !trimmedLine.includes('package.json') &&
+        !trimmedLine.includes('Next.js')
+      );
+
+      if (isHeading) {
+        // Make heading uppercase
+        processedLines.push(`# ${trimmedLine.toUpperCase()}`);
+        continue;
+      }
+
+      // Handle bullet points (various formats)
+      if (/^[-•*◦▪▫⁃]\s+/.test(trimmedLine)) {
+        processedLines.push(`- ${trimmedLine.replace(/^[-•*◦▪▫⁃]\s+/, '')}`);
+        continue;
+      }
+
+      // Handle numbered lists
+      if (/^\d+[.)]\s+/.test(trimmedLine)) {
+        const match = trimmedLine.match(/^(\d+)[.)]\s+(.+)$/);
+        if (match) {
+          processedLines.push(`${match[1]}. ${match[2]}`);
+          continue;
+        }
+      }
+
+      // Regular paragraph - process inline formatting
+      let processedLine = trimmedLine;
+
+      // Convert inline code (backticks, file names, commands)
+      processedLine = processedLine.replace(/`([^`]+)`/g, '`$1`');
+      processedLine = processedLine.replace(/\b([a-zA-Z0-9._-]+\.(js|ts|tsx|jsx|json|css|html|md))\b/g, '`$1`');
+      processedLine = processedLine.replace(/\b(package\.json|next\.config\.[jt]s|layout\.tsx|page\.tsx)\b/g, '`$1`');
+
+      // Convert framework/library names to code
+      processedLine = processedLine.replace(/\b(Next\.js|React|TypeScript|ESLint)\b/g, '`$1`');
+
+      // Convert ALL CAPS words to bold (but not single letters or very short words)
+      processedLine = processedLine.replace(/\b[A-Z]{3,}\b/g, '**$&**');
+
+      // Convert URLs to markdown links
+      processedLine = processedLine.replace(/(https?:\/\/[^\s]+)/g, '[$1]($1)');
+
+      // Convert email addresses
+      processedLine = processedLine.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '[$1](mailto:$1)');
+
+      processedLines.push(processedLine);
+    }
+
+    // If we ended while still in a code block, close it
+    if (inCodeBlock) {
+      processedLines.push(`\`\`\`${codeBlockType}`);
+      processedLines.push(...codeBlockLines);
+      processedLines.push('```');
+    }
+
+    return processedLines.join('\n');
+  };
+
+  const handleGlobalPaste = async () => {
+    const now = Date.now();
+    if (now - lastPasteTime < 1000) return; // Prevent rapid pastes
+    setLastPasteTime(now);
+
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        const converted = convertToMarkdown(text);
+        setMarkdown(converted);
+        toastRef.current?.show("Text pasted and converted!", "success");
+
+        // Auto-copy to clipboard
+        await navigator.clipboard.writeText(converted);
+        setTimeout(() => {
+          toastRef.current?.show("Markdown copied to clipboard!", "success");
+        }, 500);
+      }
+    } catch (err) {
+      console.error('Failed to read clipboard contents: ', err);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        handleGlobalPaste();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [lastPasteTime, handleGlobalPaste]);
+
+  const copyMarkdown = async () => {
+    if (!markdown) return;
+    try {
+      await navigator.clipboard.writeText(markdown);
+      toastRef.current?.show("Markdown copied to clipboard!", "success");
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+      toastRef.current?.show("Failed to copy to clipboard", "error");
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-gray-950 via-slate-900 to-black text-white relative overflow-hidden">
+      {/* Animated Background */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -inset-10 opacity-50">
+          {[...Array(20)].map((_, i) => {
+            // Use index-based positioning for consistent SSR/client rendering
+            const left = (i * 17 + 13) % 100;
+            const top = (i * 23 + 7) % 100;
+            const duration = (i % 5) * 2 + 8;
+
+            return (
+              <motion.div
+                key={i}
+                className="absolute h-2 w-2 bg-purple-400 rounded-full"
+                animate={{
+                  x: [0, 100, 0],
+                  y: [0, -100, 0],
+                  opacity: [0, 1, 0],
+                }}
+                transition={{
+                  duration: duration,
+                  repeat: Infinity,
+                  ease: "linear",
+                  delay: i * 0.5,
+                }}
+                style={{
+                  left: `${left}%`,
+                  top: `${top}%`,
+                }}
+              />
+            );
+          })}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
+      </div>
+
+      {/* GitHub Link */}
+      <div className="absolute top-6 right-6 z-50">
         <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+          href="https://github.com/ratnesh-maurya/mdconverter"
           target="_blank"
           rel="noopener noreferrer"
+          className="flex items-center space-x-2 bg-gray-800/50 hover:bg-gray-700/50 backdrop-blur-sm px-4 py-2 rounded-lg transition-colors duration-200 border border-gray-700"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
+          <Github className="h-5 w-5" />
+          <span className="hidden sm:inline">View on GitHub</span>
         </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      </div>
+
+      <div className="relative z-10 container mx-auto px-6 py-12">
+        {/* Hero Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="text-center mb-16"
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+          <div className="flex items-center justify-center mb-6">
+            <Sparkles className="h-8 w-8 text-purple-400 mr-3" />
+            <h1 className="text-6xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              MDConverter
+            </h1>
+            <Zap className="h-8 w-8 text-pink-400 ml-3" />
+          </div>
+          <p className="text-xl text-gray-300 max-w-2xl mx-auto leading-relaxed">
+            Instantly transform any text into beautiful markdown. Just paste and watch the magic happen.
+          </p>
+          <div className="mt-8 flex items-center justify-center space-x-2 text-sm text-gray-400">
+            <kbd className="px-2 py-1 bg-gray-800 rounded border border-gray-600">
+              {isMac ? "⌘" : "Ctrl"}
+            </kbd>
+            <span>+</span>
+            <kbd className="px-2 py-1 bg-gray-800 rounded border border-gray-600">V</kbd>
+            <span className="text-purple-400">to paste and convert</span>
+          </div>
+        </motion.div>
+
+        {/* Toast Notifications */}
+        <ToastManager ref={toastRef} />
+
+        {/* Main Converter */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="max-w-4xl mx-auto"
         >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+          {markdown ? (
+            <div className="space-y-6">
+              {/* Markdown Preview */}
+              <div className="bg-white/95 backdrop-blur-sm rounded-xl p-8 shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-semibold text-gray-800">Markdown Preview</h2>
+                  <button
+                    onClick={copyMarkdown}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                  >
+                    <Copy className="h-4 w-4" />
+                    <span>Copy Raw</span>
+                  </button>
+                </div>
+                <div className="text-gray-800 leading-relaxed">
+                  <ReactMarkdown
+                    components={{
+                      h1: ({ children }) => <h1 className="text-3xl font-bold text-gray-900 mb-4">{children}</h1>,
+                      h2: ({ children }) => <h2 className="text-2xl font-bold text-gray-900 mb-3">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-xl font-bold text-gray-900 mb-2">{children}</h3>,
+                      p: ({ children }) => <p className="text-gray-800 mb-3 leading-relaxed">{children}</p>,
+                      ul: ({ children }) => <ul className="list-disc list-inside mb-3 text-gray-800 space-y-1">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal list-inside mb-3 text-gray-800 space-y-1">{children}</ol>,
+                      li: ({ children }) => <li className="text-gray-800">{children}</li>,
+                      strong: ({ children }) => <strong className="font-bold text-gray-900">{children}</strong>,
+                      a: ({ href, children }) => <a href={href} className="text-blue-600 hover:text-blue-800 underline">{children}</a>,
+                      code: ({ className, children }) => {
+                        const isInline = !className;
+                        if (isInline) {
+                          return <code className="bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-sm font-mono font-medium">{children}</code>;
+                        }
+                        // This is a code block
+                        const language = className?.replace('language-', '') || 'text';
+                        return (
+                          <div className="mb-4">
+                            <div className="bg-gray-800 text-gray-300 px-3 py-1 text-xs font-medium rounded-t-lg border-b border-gray-700">
+                              {language}
+                            </div>
+                            <pre className="bg-gray-900 text-green-400 p-4 rounded-b-lg overflow-auto border border-gray-800">
+                              <code className="text-sm font-mono leading-relaxed">{children}</code>
+                            </pre>
+                          </div>
+                        );
+                      },
+                      pre: ({ children }) => {
+                        // Handle pre blocks that don't have code children
+                        return <div>{children}</div>;
+                      },
+                    }}
+                  >
+                    {markdown}
+                  </ReactMarkdown>
+                </div>
+              </div>
+
+              {/* Raw Markdown */}
+              <div className="bg-gray-800/90 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4">Raw Markdown</h3>
+                <pre className="text-green-400 font-mono text-sm whitespace-pre-wrap overflow-auto max-h-64 p-4 bg-gray-900/50 rounded-lg">
+                  {markdown}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-20">
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <Clipboard className="h-24 w-24 text-purple-400 mx-auto mb-6" />
+              </motion.div>
+              <h2 className="text-3xl font-bold mb-4">Ready to Convert!</h2>
+              <p className="text-xl text-gray-300 mb-8">
+                Press <kbd className="px-2 py-1 bg-gray-800 rounded border border-gray-600 mx-1">
+                  {isMac ? "⌘" : "Ctrl"}
+                </kbd> + <kbd className="px-2 py-1 bg-gray-800 rounded border border-gray-600 mx-1">V</kbd>
+                anywhere on this page to paste and convert text to markdown
+              </p>
+              <div className="flex items-center justify-center space-x-4 text-gray-400">
+                <span>Paste</span>
+                <ArrowRight className="h-5 w-5" />
+                <span>Convert</span>
+                <ArrowRight className="h-5 w-5" />
+                <span>Auto-Copy</span>
+              </div>
+            </div>
+          )}
+        </motion.div>
+
+        {/* Features Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+          className="mt-20 text-center"
+        >
+          <h3 className="text-3xl font-bold mb-12 text-white">Why MDConverter?</h3>
+          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+            <div className="bg-gray-800/30 backdrop-blur-sm p-6 rounded-xl border border-gray-700">
+              <Zap className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+              <h4 className="text-xl font-semibold mb-2">Lightning Fast</h4>
+              <p className="text-gray-300">Instant conversion as you type or paste</p>
+            </div>
+            <div className="bg-gray-800/30 backdrop-blur-sm p-6 rounded-xl border border-gray-700">
+              <Sparkles className="h-12 w-12 text-purple-400 mx-auto mb-4" />
+              <h4 className="text-xl font-semibold mb-2">Smart Detection</h4>
+              <p className="text-gray-300">Automatically detects headings, lists, and formatting</p>
+            </div>
+            <div className="bg-gray-800/30 backdrop-blur-sm p-6 rounded-xl border border-gray-700">
+              <Copy className="h-12 w-12 text-green-400 mx-auto mb-4" />
+              <h4 className="text-xl font-semibold mb-2">One-Click Copy</h4>
+              <p className="text-gray-300">Copy the result instantly to your clipboard</p>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Footer */}
+        <footer className="mt-20 border-t border-gray-800 pt-12 pb-8">
+          <div className="max-w-4xl mx-auto text-center">
+            <div className="mb-8">
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+                MDConverter
+              </h3>
+              <p className="text-gray-400">
+                Lightweight and powerful markdown conversion tool
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center space-x-6 mb-8">
+              <a
+                href="https://github.com/ratnesh-maurya/mdconverter"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-400 hover:text-white transition-colors duration-200"
+                aria-label="GitHub"
+              >
+                <Github className="h-6 w-6" />
+              </a>
+              <a
+                href="https://x.com/ratnesh_maurya_"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-400 hover:text-white transition-colors duration-200"
+                aria-label="Twitter"
+              >
+                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+              </a>
+              <a
+                href="https://www.ratnesh-maurya.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-400 hover:text-white transition-colors duration-200"
+                aria-label="Portfolio"
+              >
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
+                </svg>
+              </a>
+            </div>
+
+            <div className="text-gray-500 text-sm">
+              <p className="mb-2">© 2025 MDConverter. All rights reserved.</p>
+              <p>
+                Made with ❤️ by{" "}
+                <a
+                  href="https://www.ratnesh-maurya.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300 transition-colors duration-200"
+                >
+                  Ratnesh Maurya
+                </a>
+              </p>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </main>
   );
 }
