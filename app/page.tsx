@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type ClipboardEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Copy,
@@ -53,9 +53,16 @@ function useTheme() {
 
 // ─── Converter ────────────────────────────────────────────────────────────────
 
+const MARKDOWN_LINK_LINE_RE = /^\[(?:[^\]\\]|\\.)+\]\([^)]+\)/;
+
 function isCodeLikeLine(line: string): boolean {
   const t = line.trim();
-  return /^[{\[]/.test(t) || /^"[^"]*"\s*:/.test(t) || /^\s{2,}/.test(line);
+  const isMarkdownLinkLine = MARKDOWN_LINK_LINE_RE.test(t);
+  return (
+    (/^[{\[]/.test(t) && !isMarkdownLinkLine) ||
+    /^"[^"]*"\s*:/.test(t) ||
+    /^\s{2,}/.test(line)
+  );
 }
 
 function isRegularText(trimmed: string): boolean {
@@ -118,7 +125,7 @@ function convertToMarkdown(text: string): string {
 
     // code block detection
     const codeStart =
-      /^[{\[]/.test(trimmed) ||
+      (/^[{\[]/.test(trimmed) && !MARKDOWN_LINK_LINE_RE.test(trimmed)) ||
       /^"[^"]*"\s*:\s*/.test(trimmed) ||
       /^(npx|npm|yarn|pnpm|bun|git|cd|ls|cat|curl|wget|docker|kubectl|aws|node|python|ruby|go|rust|cargo)\s/.test(
         trimmed
@@ -132,7 +139,7 @@ function convertToMarkdown(text: string): string {
     if (codeStart) {
       let lang = "text";
       if (
-        /^[{\[]/.test(trimmed) ||
+        (/^[{\[]/.test(trimmed) && !MARKDOWN_LINK_LINE_RE.test(trimmed)) ||
         /^"[^"]*"\s*:/.test(trimmed)
       )
         lang = "json";
@@ -469,7 +476,7 @@ export default function Home() {
     try {
       const text = await navigator.clipboard.readText();
       if (text?.trim()) {
-        setInput(text);
+        setInput(convertToMarkdown(text));
         toastRef.current?.show("Pasted & converted!", "success");
       }
     } catch {
@@ -488,6 +495,26 @@ export default function Home() {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [handleSmartPaste]);
+
+  const handleEditorPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const pastedText = e.clipboardData.getData("text");
+      if (!pastedText?.trim()) return;
+
+      e.preventDefault();
+      const ta = e.currentTarget;
+      const { selectionStart: start, selectionEnd: end } = ta;
+      const converted = convertToMarkdown(pastedText);
+      const next = input.slice(0, start) + converted + input.slice(end);
+      setInput(next);
+
+      requestAnimationFrame(() => {
+        const cursor = start + converted.length;
+        ta.setSelectionRange(cursor, cursor);
+      });
+    },
+    [input]
+  );
 
   const copyMarkdown = async () => {
     if (!markdown) return;
@@ -755,6 +782,7 @@ export default function Home() {
                   ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  onPaste={handleEditorPaste}
                   placeholder={`Paste or type anything…\n\nExamples:\n• Articles, meeting notes, documentation\n• JSON, code snippets, scripts\n• Tables, lists, definitions\n• Any raw text content\n\nMD Converter transforms it all to beautiful Markdown instantly.`}
                   className={`flex-1 w-full resize-none p-4 text-sm font-mono leading-relaxed focus:outline-none transition-colors ${textareaBg} ${panelBg}`}
                   style={{ minHeight: "520px" }}
