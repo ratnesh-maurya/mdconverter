@@ -53,9 +53,11 @@ function useTheme() {
 
 // ─── Converter ────────────────────────────────────────────────────────────────
 
+const MARKDOWN_LINK_LINE_RE = /^\[(?:[^\]\\]|\\.)+\]\([^)]+\)/;
+
 function isCodeLikeLine(line: string): boolean {
   const t = line.trim();
-  const isMarkdownLinkLine = /^\[[^\]]+\]\([^)]+\)/.test(t);
+  const isMarkdownLinkLine = MARKDOWN_LINK_LINE_RE.test(t);
   return (
     (/^[{\[]/.test(t) && !isMarkdownLinkLine) ||
     /^"[^"]*"\s*:/.test(t) ||
@@ -123,7 +125,7 @@ function convertToMarkdown(text: string): string {
 
     // code block detection
     const codeStart =
-      (/^[{\[]/.test(trimmed) && !/^\[[^\]]+\]\([^)]+\)/.test(trimmed)) ||
+      (/^[{\[]/.test(trimmed) && !MARKDOWN_LINK_LINE_RE.test(trimmed)) ||
       /^"[^"]*"\s*:\s*/.test(trimmed) ||
       /^(npx|npm|yarn|pnpm|bun|git|cd|ls|cat|curl|wget|docker|kubectl|aws|node|python|ruby|go|rust|cargo)\s/.test(
         trimmed
@@ -137,7 +139,7 @@ function convertToMarkdown(text: string): string {
     if (codeStart) {
       let lang = "text";
       if (
-        (/^[{\[]/.test(trimmed) && !/^\[[^\]]+\]\([^)]+\)/.test(trimmed)) ||
+        (/^[{\[]/.test(trimmed) && !MARKDOWN_LINK_LINE_RE.test(trimmed)) ||
         /^"[^"]*"\s*:/.test(trimmed)
       )
         lang = "json";
